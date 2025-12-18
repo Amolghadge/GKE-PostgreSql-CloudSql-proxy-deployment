@@ -67,19 +67,30 @@ jobs:
 
       - name: Validate environment variables
         run: |
+          echo "Checking secrets configuration..."
           echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
           echo "GKE_REGION: ${{ env.GKE_REGION }}"
           echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
           echo "NAMESPACE: ${{ env.NAMESPACE }}"
-          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
-            echo "❌ ERROR: Required environment variables are not set!"
-            echo "Please configure the following secrets in your GitHub repository:"
-            echo "  - GKE_CLUSTER"
-            echo "  - GKE_REGION"
-            echo "  - GCP_PROJECT_ID"
-            echo "  - NAMESPACE"
+          
+          MISSING_VARS=""
+          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
+          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
+          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
+          [ -z "${{ env.NAMESPACE }}" ] && MISSING_VARS="${MISSING_VARS}NAMESPACE "
+          
+          if [ -n "$MISSING_VARS" ]; then
+            echo ""
+            echo "❌ ERROR: The following secrets are not configured:"
+            for var in $MISSING_VARS; do
+              echo "  - $var"
+            done
+            echo ""
+            echo "Please add these secrets to your GitHub repository:"
+            echo "Settings → Secrets and variables → Actions → New repository secret"
             exit 1
           fi
+          echo "✅ All required secrets are configured!"
 
       - name: Configure kubectl
         run: |
@@ -189,13 +200,16 @@ jobs:
 
       - name: Validate environment variables
         run: |
-          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
-          echo "GKE_REGION: ${{ env.GKE_REGION }}"
-          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
-          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
-            echo "❌ ERROR: Required environment variables are not set!"
+          MISSING_VARS=""
+          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
+          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
+          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
+          
+          if [ -n "$MISSING_VARS" ]; then
+            echo "❌ ERROR: Missing secrets: $MISSING_VARS"
             exit 1
           fi
+          echo "✅ All required secrets are configured!"
 
       - name: Configure kubectl
         run: |
@@ -250,11 +264,13 @@ jobs:
 
       - name: Validate environment variables
         run: |
-          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
-          echo "GKE_REGION: ${{ env.GKE_REGION }}"
-          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
-          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
-            echo "❌ ERROR: Required environment variables are not set!"
+          MISSING_VARS=""
+          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
+          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
+          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
+          
+          if [ -n "$MISSING_VARS" ]; then
+            echo "❌ ERROR: Missing secrets: $MISSING_VARS"
             exit 1
           fi
 
