@@ -101,6 +101,11 @@ jobs:
             echo "Settings → Secrets and variables → Actions → New repository secret"
             exit 1
           fi
+
+          echo ""
+          echo "🔎 Listing all clusters in project '${GCP_PROJECT_ID}':"
+          gcloud container clusters list --project "${GCP_PROJECT_ID}" --format="table(name,location,status)"
+          echo ""
           
           # Check if cluster exists
           echo "Checking if cluster '${GKE_CLUSTER}' exists in region '${GKE_REGION}'..."
