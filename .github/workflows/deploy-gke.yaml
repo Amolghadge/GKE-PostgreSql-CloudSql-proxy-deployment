@@ -65,6 +65,22 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Validate environment variables
+        run: |
+          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
+          echo "GKE_REGION: ${{ env.GKE_REGION }}"
+          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
+          echo "NAMESPACE: ${{ env.NAMESPACE }}"
+          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "❌ ERROR: Required environment variables are not set!"
+            echo "Please configure the following secrets in your GitHub repository:"
+            echo "  - GKE_CLUSTER"
+            echo "  - GKE_REGION"
+            echo "  - GCP_PROJECT_ID"
+            echo "  - NAMESPACE"
+            exit 1
+          fi
+
       - name: Configure kubectl
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
@@ -171,6 +187,16 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Validate environment variables
+        run: |
+          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
+          echo "GKE_REGION: ${{ env.GKE_REGION }}"
+          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
+          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "❌ ERROR: Required environment variables are not set!"
+            exit 1
+          fi
+
       - name: Configure kubectl
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
@@ -221,6 +247,16 @@ jobs:
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate environment variables
+        run: |
+          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
+          echo "GKE_REGION: ${{ env.GKE_REGION }}"
+          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
+          if [ -z "${{ env.GKE_CLUSTER }}" ] || [ -z "${{ env.GKE_REGION }}" ] || [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "❌ ERROR: Required environment variables are not set!"
+            exit 1
+          fi
 
       - name: Configure kubectl
         run: |
