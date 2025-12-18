@@ -65,6 +65,12 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: List available GKE clusters
+        run: |
+          echo "📋 Available GKE clusters in project ${{ env.GCP_PROJECT_ID }}:"
+          gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,location,status)"
+          echo ""
+
       - name: Validate environment variables
         run: |
           echo "Checking secrets configuration..."
