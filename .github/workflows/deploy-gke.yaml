@@ -79,16 +79,16 @@ jobs:
       - name: Validate environment variables
         run: |
           echo "Checking secrets configuration..."
-          echo "GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
-          echo "GKE_REGION: ${{ env.GKE_REGION }}"
-          echo "GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
-          echo "NAMESPACE: ${{ env.NAMESPACE }}"
+          echo "GKE_CLUSTER: ${GKE_CLUSTER}"
+          echo "GKE_REGION: ${GKE_REGION}"
+          echo "GCP_PROJECT_ID: ${GCP_PROJECT_ID}"
+          echo "NAMESPACE: ${NAMESPACE}"
           
           MISSING_VARS=""
-          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
-          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
-          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
-          [ -z "${{ env.NAMESPACE }}" ] && MISSING_VARS="${MISSING_VARS}NAMESPACE "
+          [ -z "${GKE_CLUSTER}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
+          [ -z "${GKE_REGION}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
+          [ -z "${GCP_PROJECT_ID}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
+          [ -z "${NAMESPACE}" ] && MISSING_VARS="${MISSING_VARS}NAMESPACE "
           
           if [ -n "$MISSING_VARS" ]; then
             echo ""
@@ -103,14 +103,14 @@ jobs:
           fi
           
           # Check if cluster exists
-          echo "Checking if cluster '${{ env.GKE_CLUSTER }}' exists in region '${{ env.GKE_REGION }}'..."
-          CLUSTER_EXISTS=$(gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} \
-            --filter="name=${{ env.GKE_CLUSTER }} AND location=${{ env.GKE_REGION }}" \
+          echo "Checking if cluster '${GKE_CLUSTER}' exists in region '${GKE_REGION}'..."
+          CLUSTER_EXISTS=$(gcloud container clusters list --project "${GCP_PROJECT_ID}" \
+            --filter="name=${GKE_CLUSTER} AND location=${GKE_REGION}" \
             --format="value(name)" 2>/dev/null || echo "")
           
           if [ -z "$CLUSTER_EXISTS" ]; then
             echo ""
-            echo "❌ ERROR: Cluster '${{ env.GKE_CLUSTER }}' not found in region '${{ env.GKE_REGION }}'!"
+            echo "❌ ERROR: Cluster '${GKE_CLUSTER}' not found in region '${GKE_REGION}'!"
             echo ""
             echo "Please verify and update your GitHub secrets:"
             echo "  1. GKE_CLUSTER - Use the exact cluster name from the list above"
