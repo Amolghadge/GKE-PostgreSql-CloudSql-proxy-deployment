@@ -70,7 +70,7 @@ jobs:
       - name: List available GKE clusters
         run: |
           echo "📋 Listing all clusters in project ${{ env.GCP_PROJECT_ID }}:"
-          gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,zone,status)"
+          gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,location,status)"
           echo ""
           echo "Configured values:"
           echo "  GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
@@ -81,7 +81,7 @@ jobs:
         run: |
           gcloud container clusters get-credentials \
             ${{ env.GKE_CLUSTER }} \
-            --zone ${{ env.GKE_LOCATION }} \
+            --region ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Verify cluster connection
@@ -164,7 +164,7 @@ jobs:
         run: |
           gcloud container clusters get-credentials \
             ${{ env.GKE_CLUSTER }} \
-            --zone ${{ env.GKE_LOCATION }} \
+            --region ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Check pod health
@@ -219,7 +219,7 @@ jobs:
         run: |
           gcloud container clusters get-credentials \
             ${{ env.GKE_CLUSTER }} \
-            --zone ${{ env.GKE_LOCATION }} \
+            --region ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Rollback Helm release
