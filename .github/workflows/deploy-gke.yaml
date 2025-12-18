@@ -96,7 +96,7 @@ jobs:
           helm upgrade --install ${{ env.HELM_RELEASE_NAME }} \
             ${{ env.HELM_CHART_PATH }} \
             --namespace ${{ env.NAMESPACE }} \
-            --values ${{ steps.set-env.outputs.VALUES_FILE }} \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
             --set cloudsql.password='${{ secrets.CLOUDSQL_PASSWORD }}' \
             --set gkeCluster.name=${{ env.GKE_CLUSTER }} \
             --set gkeCluster.region=${{ env.GKE_REGION }} \
@@ -111,18 +111,18 @@ jobs:
             --namespace ${{ env.NAMESPACE }} \
             --timeout=5m
           
-      - name: Deploy with Helm
+          echo "✅ Deployment successful!"
+          echo ""
+          echo "Deployment Details:"
+          kubectl get deployment -n ${{ env.NAMESPACE }}
+          kubectl get pods -n ${{ env.NAMESPACE }}
+          kubectl get svc -n ${{ env.NAMESPACE }}
+
+      - name: Get service endpoints
         run: |
-          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} \
-            ${{ env.HELM_CHART_PATH }} \
-            --namespace ${{ env.NAMESPACE }} \
-            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
-            --set cloudsql.password='${{ secrets.CLOUDSQL_PASSWORD }}' \
-            --set gkeCluster.name=${{ env.GKE_CLUSTER }} \
-            --set gkeCluster.region=${{ env.GKE_REGION }} \
-            --set gkeCluster.projectId=${{ env.GCP_PROJECT_ID }} \
-            --wait \
-            --timeout 10m
+          echo "Service Endpoints:"
+          kubectl get svc -n ${{ env.NAMESPACE }}
+          
           echo ""
           echo "Pod Status:"
           kubectl get pods -n ${{ env.NAMESPACE }} -o wide
