@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.application.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.application.name }}
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.application.name }}
+        version: v1
+      {{- with .Values.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.application.name }}-sa
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      
+      containers:
+      # Application Container
+      - name: {{ .Values.application.name }}
+        image: "{{ .Values.application.image.repository }}:{{ .Values.application.image.tag }}"
+        imagePullPolicy: {{ .Values.application.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        
+        ports:
+        {{- range .Values.application.ports }}
+        - name: {{ .name }}
+          containerPort: {{ .containerPort }}
+          protocol: TCP
+        {{- end }}
+        
+        env:
+        {{- toYaml .Values.application.env | nindent 12 }}
+        
+        resources:
+          {{- toYaml .Values.application.resources | nindent 12 }}
+        
+        {{- if .Values.application.livenessProbe }}
+        livenessProbe:
+          {{- toYaml .Values.application.livenessProbe | nindent 12 }}
+        {{- end }}
+        
+        {{- if .Values.application.readinessProbe }}
+        readinessProbe:
+          {{- toYaml .Values.application.readinessProbe | nindent 12 }}
+        {{- end }}
+      
+      # Cloud SQL Proxy Container
+      - name: cloud-sql-proxy
+        image: "{{ .Values.cloudsqlProxy.image.repository }}:{{ .Values.cloudsqlProxy.image.tag }}"
+        imagePullPolicy: {{ .Values.cloudsqlProxy.image.pullPolicy }}
+        
+        command:
+          - "/cloud_sql_proxy"
+          - "-instances={{ index .Values.cloudsqlProxy.instances 0 }}=tcp:{{ .Values.cloudsqlProxy.port }}"
+          - "-use_http_health_check"
+        
+        ports:
+        - name: sql
+          containerPort: {{ .Values.cloudsqlProxy.port }}
+          protocol: TCP
+        
+        resources:
+          {{- toYaml .Values.cloudsqlProxy.resources | nindent 12 }}
+        
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: 8090
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 30
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8090
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 30
+          failureThreshold: 3
+        
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+      
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

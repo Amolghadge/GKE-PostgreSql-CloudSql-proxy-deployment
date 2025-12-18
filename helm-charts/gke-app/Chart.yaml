@@ -1,0 +1,14 @@
+apiVersion: v2
+name: gke-app
+description: A Helm chart for deploying application with Cloud SQL Proxy on GKE
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - gke
+  - cloudsql
+  - proxy
+  - postgresql
+maintainers:
+  - name: DevOps Team
+    email: devops@example.com

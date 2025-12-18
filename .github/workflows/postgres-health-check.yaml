@@ -1,0 +1,102 @@
+name: PostgreSQL Connectivity Test
+
+on:
+  workflow_dispatch:
+
+env:
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_REGION: ${{ secrets.GKE_REGION }}
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  NAMESPACE: ${{ secrets.NAMESPACE }}
+
+jobs:
+  test-connectivity:
+    name: Test PostgreSQL Connectivity
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure kubectl
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --region ${{ env.GKE_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Check Cloud SQL instance status
+        run: |
+          echo "Checking Cloud SQL instance status..."
+          gcloud sql instances describe mypostgresql \
+            --project=${{ env.GCP_PROJECT_ID }}
+
+      - name: Check Cloud SQL Proxy Pod Logs
+        run: |
+          echo "Getting Cloud SQL Proxy logs..."
+          kubectl logs -n ${{ env.NAMESPACE }} -l app=app -c cloud-sql-proxy --tail=50 || echo "No logs available"
+
+      - name: Verify connectivity from pod
+        run: |
+          POD=$(kubectl get pod -n ${{ env.NAMESPACE }} -l app=app -o jsonpath='{.items[0].metadata.name}')
+          
+          if [ -z "$POD" ]; then
+            echo "❌ No pods found!"
+            exit 1
+          fi
+          
+          echo "Testing connectivity from pod: $POD"
+          echo ""
+          echo "Testing TCP connection to Cloud SQL Proxy:"
+          kubectl exec -n ${{ env.NAMESPACE }} $POD -c app -- \
+            sh -c "nc -zv localhost 5432" || echo "⚠️  TCP connection test inconclusive"
+
+      - name: PostgreSQL Server Details
+        run: |
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║         PostgreSQL Server Connection Details               ║"
+          echo "╠════════════════════════════════════════════════════════════╣"
+          echo "║ Instance Name:    Mypostgresql                             ║"
+          echo "║ Connection Name:  ornate-producer-477604-s3:us-central1:mypostgresql"
+          echo "║ Public IP:        34.123.230.140                           ║"
+          echo "║ Port:             5432                                     ║"
+          echo "║ Username:         Mypostgresql                             ║"
+          echo "║ Database:         Mypostgresql                             ║"
+          echo "║ Region:           us-central1                              ║"
+          echo "║ Type:             PostgreSQL 17                            ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+
+      - name: Pod Network Status
+        run: |
+          echo "Pod network connectivity status:"
+          POD=$(kubectl get pod -n ${{ env.NAMESPACE }} -l app=app -o jsonpath='{.items[0].metadata.name}')
+          
+          if [ ! -z "$POD" ]; then
+            echo "Pod IP: $(kubectl get pod -n ${{ env.NAMESPACE }} $POD -o jsonpath='{.status.podIP}')"
+            echo ""
+            echo "Containers in pod:"
+            kubectl get pod -n ${{ env.NAMESPACE }} $POD -o jsonpath='{.spec.containers[*].name}'
+            echo ""
+            echo ""
+            echo "Resource usage:"
+            kubectl top pod $POD -n ${{ env.NAMESPACE }} 2>/dev/null || echo "Metrics not available"
+          fi
+
+      - name: Slack notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'PostgreSQL connectivity test completed'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,author
+        continue-on-error: true

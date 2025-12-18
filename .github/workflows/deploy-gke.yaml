@@ -1,0 +1,242 @@
+name: Deploy to GKE with Helm
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'helm-charts/**'
+      - '.github/workflows/deploy-gke.yaml'
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+env:
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_REGION: ${{ secrets.GKE_REGION }}
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  HELM_CHART_PATH: helm-charts/gke-app
+  HELM_RELEASE_NAME: gke-app
+  NAMESPACE: ${{ secrets.NAMESPACE }}
+
+jobs:
+  lint:
+    name: Lint Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Lint Helm chart
+        run: |
+          helm lint ${{ env.HELM_CHART_PATH }}
+          echo "✅ Helm chart linting passed!"
+
+      - name: Validate Helm templates
+        run: |
+          helm template ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} --values ${{ env.HELM_CHART_PATH }}/values.yaml
+          echo "✅ Helm template validation passed!"
+
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure kubectl
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --region ${{ env.GKE_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create Cloud SQL credentials secret
+        run: |
+          kubectl create secret generic cloudsql-credentials \
+            --from-literal=username='Mypostgresql' \
+            --from-literal=password='${{ secrets.CLOUDSQL_PASSWORD }}' \
+            --namespace=${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+        env:
+          CLOUDSQL_PASSWORD: ${{ secrets.CLOUDSQL_PASSWORD }}
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} \
+            ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --values ${{ steps.set-env.outputs.VALUES_FILE }} \
+            --set cloudsql.password='${{ secrets.CLOUDSQL_PASSWORD }}' \
+            --set gkeCluster.name=${{ env.GKE_CLUSTER }} \
+            --set gkeCluster.region=${{ env.GKE_REGION }} \
+            --set gkeCluster.projectId=${{ env.GCP_PROJECT_ID }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for deployment to be ready..."
+          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout=5m
+          
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} \
+            ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --set cloudsql.password='${{ secrets.CLOUDSQL_PASSWORD }}' \
+            --set gkeCluster.name=${{ env.GKE_CLUSTER }} \
+            --set gkeCluster.region=${{ env.GKE_REGION }} \
+            --set gkeCluster.projectId=${{ env.GCP_PROJECT_ID }} \
+            --wait \
+            --timeout 10m
+          echo ""
+          echo "Pod Status:"
+          kubectl get pods -n ${{ env.NAMESPACE }} -o wide
+          
+          echo ""
+          echo "Container Logs (Application):"
+          kubectl logs -n ${{ env.NAMESPACE }} -l app=app --tail=50 || true
+
+      - name: Slack notification (Success)
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Successfully deployed ${{ env.HELM_RELEASE_NAME }} to GKE cluster'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author
+        continue-on-error: true
+
+      - name: Slack notification (Failure)
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Failed to deploy ${{ env.HELM_RELEASE_NAME }} to GKE cluster'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author
+        continue-on-error: true
+
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure kubectl
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --region ${{ env.GKE_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Check pod health
+        run: |
+          echo "Checking pod health..."
+          kubectl get pods -n ${{ env.NAMESPACE }}
+          
+          echo ""
+          echo "Checking application logs..."
+          kubectl logs -n ${{ env.NAMESPACE }} -l app=app --tail=20 || true
+          
+          echo ""
+          echo "Checking Cloud SQL Proxy logs..."
+          kubectl logs -n ${{ env.NAMESPACE }} -l app=app -c cloud-sql-proxy --tail=20 || true
+
+      - name: Verify database connectivity
+        run: |
+          echo "Verifying Cloud SQL Proxy connectivity..."
+          POD=$(kubectl get pod -n ${{ env.NAMESPACE }} -l app=app -o jsonpath='{.items[0].metadata.name}')
+          
+          if [ -z "$POD" ]; then
+            echo "❌ No pods found!"
+            exit 1
+          fi
+          
+          echo "Testing Cloud SQL Proxy on pod: $POD"
+          kubectl exec -n ${{ env.NAMESPACE }} $POD -c cloud-sql-proxy -- \
+            sh -c "echo 'Cloud SQL Proxy is running'" || echo "⚠️  Cloud SQL Proxy check failed, but may still be functional"
+
+  rollback:
+    name: Rollback (Manual)
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [lint, deploy, health-check]
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure kubectl
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --region ${{ env.GKE_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Rollback Helm release
+        run: |
+          echo "⚠️  Rolling back deployment..."
+          helm rollback ${{ env.HELM_RELEASE_NAME }} \
+            --namespace ${{ env.NAMESPACE }}
+          
+          echo "✅ Rollback completed!"

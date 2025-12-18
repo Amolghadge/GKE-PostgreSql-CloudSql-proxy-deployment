@@ -1,0 +1,142 @@
+# Application Configuration
+application:
+  enabled: true
+  name: app
+  replicaCount: 1
+  
+  image:
+    repository: nginx  # Replace with your application image
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  env:
+    - name: DB_HOST
+      value: "localhost"
+    - name: DB_PORT
+      value: "5432"
+    - name: DB_NAME
+      value: "Mypostgresql"
+    - name: DB_USER
+      valueFrom:
+        secretKeyRef:
+          name: cloudsql-credentials
+          key: username
+    - name: DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: cloudsql-credentials
+          key: password
+  
+  ports:
+    - containerPort: 8080
+      name: http
+  
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Cloud SQL Proxy Configuration
+cloudsqlProxy:
+  enabled: true
+  image:
+    repository: gcr.io/cloudsql-docker/cloud-sql-proxy
+    tag: "2.4.0"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Cloud SQL connection details
+  instances:
+    - "ornate-producer-477604-s3:us-central1:mypostgresql"  # Replace with your connection name
+  
+  port: 5432
+
+# GKE Cluster Configuration
+gkeCluster:
+  name: "gke-cluster"
+  region: "us-central1"
+  projectId: "ornate-producer-477604-s3"  # Replace with your GCP project ID
+
+# Cloud SQL Connection Details
+cloudsql:
+  host: "34.123.230.140"
+  port: 5432
+  database: "Mypostgresql"
+  username: "Mypostgresql"
+  # Password should be provided via secret
+
+# Service Configuration
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Ingress Configuration
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: "app.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Pod Security and RBAC
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Node Selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Namespace
+namespace: default
+
+# Labels
+labels:
+  app: gke-app
+  version: v1
+
+# Annotations
+annotations:
+  description: "GKE Application with Cloud SQL Proxy"
