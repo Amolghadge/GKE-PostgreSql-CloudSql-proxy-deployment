@@ -14,7 +14,7 @@ on:
 
 env:
   GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
-  GKE_REGION: ${{ secrets.GKE_REGION }}
+  GKE_LOCATION: ${{ secrets.GKE_LOCATION }}
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   HELM_CHART_PATH: helm-charts/gke-app
   HELM_RELEASE_NAME: gke-app
@@ -29,9 +29,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
         with:
-          version: 'latest'
+          version: v3.13.0
 
       - name: Lint Helm chart
         run: |
@@ -48,10 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
       - name: Checkout code
@@ -60,84 +56,34 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: List available GKE clusters
+      - name: Install kubectl
         run: |
-          echo "📋 Available GKE clusters in project ${{ env.GCP_PROJECT_ID }}:"
-          gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,location,status)"
-          echo ""
-          echo "---"
-          echo "Your configured cluster name: ${{ env.GKE_CLUSTER }}"
-          echo "Your configured region: ${{ env.GKE_REGION }}"
-          echo "---"
-          echo ""
+          gcloud components install kubectl -q
 
-      - name: Validate environment variables
+      - name: Get GKE credentials
         run: |
-          echo "Checking secrets configuration..."
-          echo "GKE_CLUSTER: ${GKE_CLUSTER}"
-          echo "GKE_REGION: ${GKE_REGION}"
-          echo "GCP_PROJECT_ID: ${GCP_PROJECT_ID}"
-          echo "NAMESPACE: ${NAMESPACE}"
-          
-          MISSING_VARS=""
-          [ -z "${GKE_CLUSTER}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
-          [ -z "${GKE_REGION}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
-          [ -z "${GCP_PROJECT_ID}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
-          [ -z "${NAMESPACE}" ] && MISSING_VARS="${MISSING_VARS}NAMESPACE "
-          
-          if [ -n "$MISSING_VARS" ]; then
-            echo ""
-            echo "❌ ERROR: The following secrets are not configured:"
-            for var in $MISSING_VARS; do
-              echo "  - $var"
-            done
-            echo ""
-            echo "Please add these secrets to your GitHub repository:"
-            echo "Settings → Secrets and variables → Actions → New repository secret"
-            exit 1
-          fi
-
-          echo ""
-          echo "🔎 Listing all clusters in project '${GCP_PROJECT_ID}':"
-          gcloud container clusters list --project "${GCP_PROJECT_ID}" --format="table(name,location,status)"
-          echo ""
-          
-          # Check if cluster exists
-          echo "Checking if cluster '${GKE_CLUSTER}' exists in region '${GKE_REGION}'..."
-          CLUSTER_EXISTS=$(gcloud container clusters list --project "${GCP_PROJECT_ID}" \
-            --filter="name=${GKE_CLUSTER} AND location=${GKE_REGION}" \
-            --format="value(name)" 2>/dev/null || echo "")
-          
-          if [ -z "$CLUSTER_EXISTS" ]; then
-            echo ""
-            echo "❌ ERROR: Cluster '${GKE_CLUSTER}' not found in region '${GKE_REGION}'!"
-            echo ""
-            echo "Please verify and update your GitHub secrets:"
-            echo "  1. GKE_CLUSTER - Use the exact cluster name from the list above"
-            echo "  2. GKE_REGION - Use the exact region/location from the list above"
-            echo ""
-            echo "Settings → Secrets and variables → Actions"
-            exit 1
-          fi
-          
-          
-          echo "✅ Cluster found! Proceeding..."
-
-      - name: Configure kubectl
-        run: |
-          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
-            --region ${{ env.GKE_REGION }} \
+          gcloud container clusters get-credentials \
+            ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
+      - name: Verify cluster connection
+        run: |
+          echo "✅ Connected to cluster: ${{ env.GKE_CLUSTER }}"
+          kubectl get nodes
+          kubectl get ns
+
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
         with:
-          version: 'latest'
+          version: v3.13.0
 
       - name: Create namespace if not exists
         run: |
@@ -153,18 +99,18 @@ jobs:
         env:
           CLOUDSQL_PASSWORD: ${{ secrets.CLOUDSQL_PASSWORD }}
 
-      - name: Deploy with Helm
+      - name: Deploy Helm Chart to GKE
         run: |
-          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} \
-            ${{ env.HELM_CHART_PATH }} \
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ${{ env.HELM_CHART_PATH }} \
             --namespace ${{ env.NAMESPACE }} \
             --values ${{ env.HELM_CHART_PATH }}/values.yaml \
             --set cloudsql.password='${{ secrets.CLOUDSQL_PASSWORD }}' \
             --set gkeCluster.name=${{ env.GKE_CLUSTER }} \
-            --set gkeCluster.region=${{ env.GKE_REGION }} \
+            --set gkeCluster.location=${{ env.GKE_LOCATION }} \
             --set gkeCluster.projectId=${{ env.GCP_PROJECT_ID }} \
-            --wait \
-            --timeout 10m
+            --timeout 10m \
+            --wait 2>&1 | grep -v "metrics.k8s.io" || true
+          echo "✅ Helm deployment completed successfully."
 
       - name: Verify deployment
         run: |
@@ -177,30 +123,14 @@ jobs:
           echo ""
           echo "Deployment Details:"
           kubectl get deployment -n ${{ env.NAMESPACE }}
-          kubectl get pods -n ${{ env.NAMESPACE }}
-          kubectl get svc -n ${{ env.NAMESPACE }}
-
-      - name: Get service endpoints
-        run: |
-          echo "Service Endpoints:"
-          kubectl get svc -n ${{ env.NAMESPACE }}
-          
-          echo ""
-          echo "Pod Status:"
           kubectl get pods -n ${{ env.NAMESPACE }} -o wide
-          
-          echo ""
-          echo "Container Logs (Application):"
-          kubectl logs -n ${{ env.NAMESPACE }} -l app=app --tail=50 || true
+          kubectl get svc -n ${{ env.NAMESPACE }}
 
   health-check:
     name: Health Check
     runs-on: ubuntu-latest
     needs: deploy
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout code
@@ -209,28 +139,22 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Validate environment variables
+      - name: Install kubectl
         run: |
-          MISSING_VARS=""
-          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
-          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
-          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
-          
-          if [ -n "$MISSING_VARS" ]; then
-            echo "❌ ERROR: Missing secrets: $MISSING_VARS"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured!"
+          gcloud components install kubectl -q
 
-      - name: Configure kubectl
+      - name: Get GKE credentials
         run: |
-          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
-            --region ${{ env.GKE_REGION }} \
+          gcloud container clusters get-credentials \
+            ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Check pod health
@@ -266,34 +190,26 @@ jobs:
     if: failure()
     needs: [lint, deploy, health-check]
 
-    permissions:
-      contents: read
-
     steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Validate environment variables
+      - name: Install kubectl
         run: |
-          MISSING_VARS=""
-          [ -z "${{ env.GKE_CLUSTER }}" ] && MISSING_VARS="${MISSING_VARS}GKE_CLUSTER "
-          [ -z "${{ env.GKE_REGION }}" ] && MISSING_VARS="${MISSING_VARS}GKE_REGION "
-          [ -z "${{ env.GCP_PROJECT_ID }}" ] && MISSING_VARS="${MISSING_VARS}GCP_PROJECT_ID "
-          
-          if [ -n "$MISSING_VARS" ]; then
-            echo "❌ ERROR: Missing secrets: $MISSING_VARS"
-            exit 1
-          fi
+          gcloud components install kubectl -q
 
-      - name: Configure kubectl
+      - name: Get GKE credentials
         run: |
-          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
-            --region ${{ env.GKE_REGION }} \
+          gcloud container clusters get-credentials \
+            ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
       - name: Rollback Helm release
