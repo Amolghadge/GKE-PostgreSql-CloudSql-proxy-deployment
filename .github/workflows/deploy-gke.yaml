@@ -70,6 +70,11 @@ jobs:
           echo "📋 Available GKE clusters in project ${{ env.GCP_PROJECT_ID }}:"
           gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,location,status)"
           echo ""
+          echo "---"
+          echo "Your configured cluster name: ${{ env.GKE_CLUSTER }}"
+          echo "Your configured region: ${{ env.GKE_REGION }}"
+          echo "---"
+          echo ""
 
       - name: Validate environment variables
         run: |
@@ -96,7 +101,26 @@ jobs:
             echo "Settings → Secrets and variables → Actions → New repository secret"
             exit 1
           fi
-          echo "✅ All required secrets are configured!"
+          
+          # Check if cluster exists
+          echo "Checking if cluster '${{ env.GKE_CLUSTER }}' exists in region '${{ env.GKE_REGION }}'..."
+          CLUSTER_EXISTS=$(gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} \
+            --filter="name=${{ env.GKE_CLUSTER }} AND location=${{ env.GKE_REGION }}" \
+            --format="value(name)" 2>/dev/null || echo "")
+          
+          if [ -z "$CLUSTER_EXISTS" ]; then
+            echo ""
+            echo "❌ ERROR: Cluster '${{ env.GKE_CLUSTER }}' not found in region '${{ env.GKE_REGION }}'!"
+            echo ""
+            echo "Please verify and update your GitHub secrets:"
+            echo "  1. GKE_CLUSTER - Use the exact cluster name from the list above"
+            echo "  2. GKE_REGION - Use the exact region/location from the list above"
+            echo ""
+            echo "Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          
+          echo "✅ Cluster found! Proceeding..."
 
       - name: Configure kubectl
         run: |
