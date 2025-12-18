@@ -4,6 +4,7 @@ description: A Helm chart for deploying application with Cloud SQL Proxy on GKE
 type: application
 version: 0.1.0
 appVersion: "1.0"
+icon: https://www.vectorlogo.zone/logos/kubernetes/kubernetes-icon.svg
 keywords:
   - gke
   - cloudsql
