@@ -67,6 +67,16 @@ jobs:
         run: |
           gcloud components install kubectl -q
 
+      - name: List available GKE clusters
+        run: |
+          echo "📋 Listing all clusters in project ${{ env.GCP_PROJECT_ID }}:"
+          gcloud container clusters list --project ${{ env.GCP_PROJECT_ID }} --format="table(name,zone,status)"
+          echo ""
+          echo "Configured values:"
+          echo "  GKE_CLUSTER: ${{ env.GKE_CLUSTER }}"
+          echo "  GKE_LOCATION: ${{ env.GKE_LOCATION }}"
+          echo "  GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}"
+
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials \
