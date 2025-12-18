@@ -102,6 +102,16 @@ jobs:
       - name: Create namespace if not exists
         run: |
           kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Add Helm management labels to namespace
+          kubectl annotate namespace ${{ env.NAMESPACE }} \
+            meta.helm.sh/release-name=${{ env.HELM_RELEASE_NAME }} \
+            meta.helm.sh/release-namespace=${{ env.NAMESPACE }} \
+            --overwrite
+          
+          kubectl label namespace ${{ env.NAMESPACE }} \
+            app.kubernetes.io/managed-by=Helm \
+            --overwrite
 
       - name: Create Cloud SQL credentials secret
         run: |
@@ -226,8 +236,7 @@ jobs:
             --region ${{ env.GKE_LOCATION }} \
             --project ${{ env.GCP_PROJECT_ID }}
 
-      - name: Rollback Helm release
-        run: |
+      - name: Rollback Helm release        run: |
           echo "⚠️  Rolling back deployment..."
           helm rollback ${{ env.HELM_RELEASE_NAME }} \
             --namespace ${{ env.NAMESPACE }}
