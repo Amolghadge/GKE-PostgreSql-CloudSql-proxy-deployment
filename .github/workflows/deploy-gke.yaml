@@ -187,26 +187,6 @@ jobs:
           echo "Container Logs (Application):"
           kubectl logs -n ${{ env.NAMESPACE }} -l app=app --tail=50 || true
 
-      - name: Slack notification (Success)
-        if: success()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Successfully deployed ${{ env.HELM_RELEASE_NAME }} to GKE cluster'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          fields: repo,message,commit,author
-        continue-on-error: true
-
-      - name: Slack notification (Failure)
-        if: failure()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Failed to deploy ${{ env.HELM_RELEASE_NAME }} to GKE cluster'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          fields: repo,message,commit,author
-        continue-on-error: true
-
   health-check:
     name: Health Check
     runs-on: ubuntu-latest
